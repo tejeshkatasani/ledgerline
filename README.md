@@ -110,21 +110,25 @@ npm test
 
 ## Deploy to Render
 
-1. Fork this repo to GitHub
-2. Create a new **Web Service** on [render.com](https://render.com)
-   - Build command: `npm install && npm run build && npm run migrate`
-   - Start command: `npm start`
-3. Add a **PostgreSQL** database from the Render dashboard
-4. Set environment variables in the Render dashboard (Environment tab):
+The `render.yaml` in the root automates everything. Deploy in ~2 minutes:
 
-| Variable | Value |
-|----------|-------|
-| `DATABASE_URL` | (auto-filled by Render PostgreSQL) |
-| `JWT_SECRET` | A random 64-character string |
-| `AUDIT_HMAC_SECRET` | A different random 64-character string |
-| `NODE_ENV` | `production` |
+1. Go to [render.com](https://render.com) and sign up (free, no credit card)
+2. Click **New → Blueprint**
+3. Connect your GitHub account and select the `ledgerline` repo
+4. Render reads `render.yaml` and creates: one Web Service + one PostgreSQL database
+5. Click **Apply** — Render will:
+   - Run `npm ci && npm run build && node dist/db/migrate.js`
+   - Start with `npm start`
+   - Auto-inject `DATABASE_URL` from the managed Postgres
+   - Auto-generate `JWT_SECRET` and `AUDIT_HMAC_SECRET`
+6. Your live URL will be: `https://ledgerline.onrender.com`
 
-5. Deploy. The `render.yaml` in the repo automates this.
+**Alternatively**, deploy manually:
+1. Create a new **PostgreSQL** database on Render (free tier)
+2. Create a new **Web Service**, connect the repo
+3. Set build command: `npm ci && npm run build && node dist/db/migrate.js`
+4. Set start command: `npm start`
+5. Add env vars: `DATABASE_URL` (from step 1), `JWT_SECRET` (random 64 chars), `AUDIT_HMAC_SECRET` (random 64 chars), `NODE_ENV=production`
 
 ---
 
