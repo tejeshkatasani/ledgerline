@@ -3,7 +3,7 @@
 Money movement with a ledger you can prove.
 
 **Live URL:** https://ledgerline.onrender.com  
-**GitHub:** https://github.com/YOUR_USERNAME/ledgerline
+**GitHub:** https://github.com/tejeshkatasani/ledgerline
 
 ---
 
@@ -78,7 +78,7 @@ Include `Idempotency-Key: <uuid>` header to make the transfer idempotent.
 ### Setup
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/ledgerline.git
+git clone https://github.com/tejeshkatasani/ledgerline.git
 cd ledgerline
 npm install
 cp .env.example .env

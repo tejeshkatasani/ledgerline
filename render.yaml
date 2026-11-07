@@ -3,7 +3,7 @@ services:
     name: ledgerline
     env: node
     plan: free
-    buildCommand: npm install && npm run build && npm run migrate
+    buildCommand: npm ci && npm run build && node dist/db/migrate.js
     startCommand: npm start
     healthCheckPath: /health
     envVars:
