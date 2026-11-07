@@ -1,128 +1,168 @@
-# PROMPTS.md — AI Collaboration Diary
+# LedgerLine — My Experience Using AI
 
-This file records every significant AI-assisted decision during the build of LedgerLine.
-Format: date · what I asked · what the tool produced · what was wrong · what I did instead / commit.
+## 1. How I used AI during this project
 
----
+I used two AI tools while developing LedgerLine: **Kiro AI and ChatGPT**.
 
-## Entry 1 — 2026-11-07 · Project scaffolding & tech stack choice
+I want to be honest about how I used them. I did not write every line of code independently. I explained my project requirements, discussed the features I wanted, and used these AI tools to generate code and guide me through implementation.
 
-**What I asked:**
-"Build a secure double-entry ledger API in Node.js. I need idempotency, JWT auth, immutable audit log, and SERIALIZABLE transactions. What stack?"
+Kiro AI and ChatGPT helped me with backend development, frontend development, database integration, security-related implementation, debugging and deployment.
 
-**What the tool produced:**
-Proposed Prisma ORM with PostgreSQL, citing its type safety and migration tooling.
+My role was to explain what I wanted to build, understand the generated implementation, follow the development process, run commands, test features and report problems when something did not work.
 
-**What was wrong with it:**
-Prisma abstracts away the transaction isolation level — you cannot easily specify `ISOLATION LEVEL SERIALIZABLE` on a per-query basis through its transaction API. For a financial ledger where serialisability is a hard requirement (not a nice-to-have), losing direct SQL control is unacceptable. Prisma's `$transaction` helper defaults to READ COMMITTED. I would have needed to use `$executeRaw` for the critical paths anyway, which defeats the purpose of an ORM.
+I am still learning several of the technologies used in this project. Working on LedgerLine helped me understand how different parts of a real application connect.
 
-**What I did instead:**
-Used `pg` (node-postgres) with raw parameterised SQL throughout. This gives full control over isolation levels, row-level locking order (`FOR UPDATE` in UUID order to prevent deadlocks), and lets me write the exact schema constraints I need (`CHECK (balance >= 0)`, the append-only trigger). Added `zod` for input validation to compensate for losing ORM-level type coercion.
+## 2. Tools I used
 
-*Commit: `feat: scaffold project with pg + express + zod`*
+### Kiro AI
 
----
+I used Kiro AI during the initial development of LedgerLine.
 
-## Entry 2 — 2026-11-07 · Idempotency design (AUTHORISATION-ADJACENT)
+I used it to:
+- Understand the project requirements.
+- Generate application code.
+- Work on backend features and database integration.
+- Discuss authentication and transaction functionality.
+- Identify and resolve implementation errors.
+- Develop the project structure.
 
-**What I asked:**
-"Implement idempotency for POST /transfers. The same Idempotency-Key header should never execute a transfer twice."
+### ChatGPT
 
-**What the tool produced:**
-A middleware that stored the key + response in a Redis cache with a TTL. On a second request with the same key it replayed the cached response.
+I used ChatGPT throughout development, especially when I needed explanations or when something was not working as expected.
 
-**What was wrong with it:**
-Two critical flaws:
-1. **No ownership scope.** The cache key was just the `Idempotency-Key` string. That means if Alice sends key `pay-001` and Bob (by coincidence or attack) also sends `pay-001`, Bob gets Alice's cached response — including Alice's balance after the transfer. This is an information disclosure and potential authorisation bypass.
-2. **Race condition.** Two simultaneous requests with the same key could both pass the cache miss check before either one wrote to cache, both executing the transfer.
+I used it to:
+- Understand generated code and project files.
+- Get step-by-step instructions.
+- Debug TypeScript, npm and deployment errors.
+- Understand authentication, transfers and audit logging.
+- Test application functionality.
+- Improve documentation.
+- Prepare the project for GitHub and Render deployment.
 
-**What I did instead:**
-1. Scoped idempotency to `(key, user_id, request_path)` — a key is only a duplicate if the same authenticated user sends it to the same endpoint. This is stored in a PostgreSQL table (`idempotency_keys`) with a composite primary key, not in Redis.
-2. The race condition is resolved by the UNIQUE constraint on `transactions.idempotency_key` — even if two requests slip through the middleware simultaneously, only one INSERT can succeed; the other gets a PostgreSQL 23505 (unique violation) which is caught and returned as HTTP 409.
-3. Added a second check inside `transferFunds()` that validates the key is being reused for the *same* source and destination accounts — reusing a key for a different transfer is rejected with 409 CONFLICT.
+## 3. What I learned during development
 
-*Commit: `feat: idempotency scoped to user+path, pg-backed dedup`*
+### Understanding the application architecture
 
----
+Initially, I needed guidance to understand how the frontend, Express backend and PostgreSQL database communicate.
 
-## Entry 3 — 2026-11-07 · Audit log integrity (AUDIT TRAIL)
+While developing LedgerLine, I gradually understood the purpose of:
+- API endpoints.
+- Authentication middleware.
+- Database tables and relationships.
+- Request validation.
+- Transaction processing.
+- Frontend-to-backend communication.
 
-**What I asked:**
-"Create an append-only audit log. Make it tamper-evident."
+### Understanding financial transfers
 
-**What the tool produced:**
-A simple `audit_log` table with a `created_at` timestamp and a suggestion to "use a separate service" to detect tampering.
+I used AI to understand how a transfer should work between two accounts.
 
-**What was wrong with it:**
-"Detect tampering in a separate service" is not tamper-*evident* — it's tamper-detectable only if you remember to run the service, and only if the attacker didn't also tamper with the separate service. The suggestion also missed the database-level mutation protection entirely; an attacker with DB access could trivially UPDATE or DELETE rows.
+I learned that a transfer is not simply updating two account balances. Both sides of the transaction must be handled consistently, and the operation should not leave the database in an incorrect state if something fails.
 
-**What I did instead:**
-Two layered controls:
-1. **PostgreSQL trigger** (`trg_audit_no_update`) — a `BEFORE UPDATE OR DELETE` trigger raises an exception unconditionally. Any mutation attempt — including from the application user — is blocked at the database engine level before the row is touched.
-2. **HMAC-SHA256 hash chain** — each row's `row_hash` is computed over `(event_type, actor_id, resource_type, resource_id, payload, created_at, prev_hash)` using a server-side HMAC secret. The `prev_hash` field links each row to the previous one. Modifying *any* historical row invalidates its own hash *and* every subsequent row's hash. A `GET /audit/verify` endpoint lets anyone with a token check the entire chain.
+I also learned about database transactions, row locking and insufficient-funds validation.
 
-The hash chain is inspired by how blockchains and certificate transparency logs work, but without the distributed consensus overhead — appropriate for a single-tenant API.
+### Understanding security
 
-*Commit: `feat: append-only audit log with trigger + HMAC hash chain`*
+Security was one of the areas where I needed more guidance.
 
----
+With AI explanations, I learned about:
+- JWT authentication.
+- Password hashing using bcrypt.
+- Account ownership validation.
+- SQL injection prevention.
+- Idempotency.
+- Rate limiting.
+- Audit logging.
+- HMAC-SHA256 hash chains.
 
-## Entry 4 — 2026-11-07 · Concurrent transfer race condition (SECURITY)
+I understand the purpose of these mechanisms better now, but I still need more practical experience implementing and independently reviewing security-sensitive code.
 
-**What I asked:**
-"Two simultaneous transfers from the same account — how do I prevent the balance going negative?"
+## 4. Problems I faced and how I used AI
 
-**What the tool produced:**
-"Use optimistic concurrency with a version column. Check the version before updating, increment it on update. If the version changed, retry."
+### Problem 1 — Local application setup
 
-**What was wrong with it:**
-Optimistic concurrency with a version column (a.k.a. optimistic locking) still has a TOCTOU (time-of-check/time-of-use) window in READ COMMITTED isolation: both transactions read the balance, both see it as sufficient, both decrement it. The version check catches this only if the transactions overlap on the *write* — but PostgreSQL READ COMMITTED can allow both reads before either write, meaning both pass the version check on their SELECT and then both execute the UPDATE, with the last writer winning (not conflicting). You end up with a wrong balance, not an error.
+Initially, I faced issues while setting up and running the project.
 
-**What I did instead:**
-Two complementary mechanisms:
-1. **`ISOLATION LEVEL SERIALIZABLE`** — PostgreSQL's SSI (Serializable Snapshot Isolation) detects the read-write dependency cycle and aborts one transaction with a `40001` serialization failure. This is the correct tool for this problem.
-2. **Row-level locking in consistent order** — `SELECT ... FOR UPDATE` on both accounts, always locking the lower UUID first. This is belt-and-suspenders: even under READ COMMITTED, the FOR UPDATE lock means only one transfer can proceed at a time for a given account pair.
-3. **`CHECK (balance >= 0)`** on the accounts table as a final backstop — any UPDATE that would make balance negative fails at the constraint level regardless of isolation.
+I used ChatGPT to understand the terminal commands, project structure, npm dependencies and application startup process.
 
-*Commit: `feat: serializable isolation + ordered row locks for concurrent transfers`*
+I followed the instructions and checked whether the application started successfully.
 
----
+### Problem 2 — Frontend integration
 
-## Entry 5 — 2026-11-07 · Authorization checks inside vs. outside the transaction (AUTHORISATION)
+The original project had backend functionality, but I needed a usable frontend.
 
-**What I asked:**
-"Where should I check that the user owns the source account — before the DB transaction or inside it?"
+I used AI to generate frontend files and integrate them with the existing backend.
 
-**What the tool produced:**
-"Check ownership before starting the transaction to avoid holding locks longer than needed."
+I then ran the application locally and checked registration, login, account creation and transfer functionality.
 
-**What was wrong with it:**
-Checking ownership *before* the transaction and then starting a new transaction is a TOCTOU race: ownership can change between the check and the lock acquisition (if, for example, accounts could be transferred between users — or if a future feature adds that). More importantly, the check outside the transaction is not atomic with the balance check and the UPDATE — an attacker who can somehow modify the account's `user_id` between those two moments bypasses the ownership gate entirely.
+### Problem 3 — Audit verification failure
 
-**What I did instead:**
-The ownership check is performed *inside* the `SERIALIZABLE` transaction, *after* acquiring the `FOR UPDATE` row lock on both accounts. By the time we read `fromAccount.user_id`, we hold an exclusive lock on that row — no other transaction can modify it until we commit or rollback. The entire sequence (ownership check → balance check → debit → credit → audit) is atomic.
+During testing, the audit verification endpoint returned:
 
-The pre-transaction idempotency check is the *only* operation that happens outside the transaction, and it's safe to do so because it's purely a read that only short-circuits the transaction; it never makes any write decision on its own.
+`valid: false, firstBadId: 7`
 
-*Commit: `feat: ownership check inside serializable txn after row lock`*
+I used ChatGPT to understand the audit service and the HMAC hash-chain implementation.
 
----
+I also discussed possible JSON/JSONB canonicalization issues.
 
-## Entry 6 — 2026-11-07 · Deployment & environment secrets
+However, the issue was not resolved during that stage. I documented it in `README.md` and `TODO.md` rather than claiming that the audit verification was working correctly.
 
-**What I asked:**
-"How should I handle JWT_SECRET and AUDIT_HMAC_SECRET on Render?"
+### Problem 4 — Render deployment failure
 
-**What the tool produced:**
-Suggested putting secrets in a `.env` file and committing it to the repo, "since Render reads it automatically."
+My first frontend deployment failed on Render.
 
-**What was wrong with it:**
-Committing secrets to a public GitHub repository is an immediate and total compromise of both the JWT signing key (anyone can forge tokens) and the HMAC key (anyone can fabricate audit log entries that pass verification). Render does *not* require a committed `.env` — it has a secret groups / environment variables UI that injects secrets at runtime without them ever touching the repo.
+The build logs showed:
 
-**What I did instead:**
-- `.env` is in `.gitignore` and never committed.
-- `.env.example` has placeholder strings (`change-me-to-a-long-random-secret-in-production`) to show the shape without exposing values.
-- `src/utils/config.ts` throws at startup if `JWT_SECRET` or `AUDIT_HMAC_SECRET` are missing, making a misconfigured deploy fail fast and obviously rather than silently using a default.
-- README documents how to set environment variables in the Render dashboard.
+`TS2688: Cannot find type definition file for 'jest'.`
 
-*Commit: `docs: env.example, config throws on missing secrets, render deploy docs`*
+With ChatGPT's help, I investigated `tsconfig.json` and `package.json`.
+
+I learned that Jest type definitions were listed under development dependencies, while the production build needed them during TypeScript compilation.
+
+I moved `@types/jest` into production dependencies and ran the build and tests again.
+
+The local build succeeded, all four test suites passed with 30 tests, and I pushed the correction to GitHub.
+
+Render subsequently deployed commit `33bf68d` successfully.
+
+## 5. How I verified the application
+
+I did not rely only on generated code or AI explanations.
+
+I ran the application locally and performed manual checks.
+
+Some of the checks I completed were:
+
+- User registration and login.
+- Account creation.
+- Transfer between two accounts.
+- Transaction history.
+- Audit event display.
+- Insufficient-funds rejection.
+- TypeScript build.
+- Automated Jest tests.
+
+The final local test result was:
+
+- Test suites: 4 passed.
+- Tests: 30 passed.
+
+I also connected the GitHub repository to Render and verified that the latest deployment became Live.
+
+These checks gave me confidence in the functionality I tested, but they do not prove that every possible security issue has been eliminated.
+
+## 6. My honest reflection
+
+LedgerLine was an opportunity for me to learn how a multi-component application is developed with AI assistance.
+
+I relied heavily on Kiro AI and ChatGPT for code generation and technical guidance. I do not claim that I independently designed and wrote every implementation.
+
+However, I was involved in defining the requirements, understanding the generated code, following the implementation process, running commands, testing functionality, identifying problems and documenting unresolved issues.
+
+I learned that AI-generated code can save development time, but it does not guarantee correctness or security.
+
+I also learned that a successful build and passing tests do not automatically mean an application is production-ready.
+
+My next goal is to improve my understanding of the codebase, investigate the remaining audit integrity issue, strengthen security tests and become more confident in explaining and modifying the implementation independently.
+
+This is an honest record of how I used AI while developing LedgerLine.

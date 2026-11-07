@@ -1,181 +1,280 @@
-# THREATS.md — LedgerLine Threat Model
+# LedgerLine — My Threat Model
 
-## Methodology
+## 1. Why I created this document
 
-STRIDE-based analysis (Spoofing, Tampering, Repudiation, Information Disclosure, Denial of Service, Elevation of Privilege) applied to every trust boundary in LedgerLine.
+While building LedgerLine, I wanted to think beyond normal application functionality. Since this application handles financial transactions, I considered what could go wrong if someone tried to misuse the API, access another user's account, manipulate transactions, or tamper with records.
 
----
+I used the STRIDE methodology to identify possible security threats and document the controls I implemented or planned.
 
-## Trust Boundaries
+My main focus areas are authentication, authorization, transaction integrity, audit logging, data validation, and availability.
 
-```
-[Client]  ──HTTPS──►  [Express API]  ──TCP──►  [PostgreSQL]
-                           │
-                       [JWT validation]
-                       [Ownership checks]
-                       [Rate limiter]
-```
+## 2. Application trust boundaries
 
----
+The main components of my application are:
 
-## Threat Catalogue
+- Client: Sends registration, login, account and transfer requests.
+- Express API: Handles authentication, validation and business logic.
+- PostgreSQL: Stores users, accounts, transactions and audit records.
+- JWT middleware: Verifies authenticated requests.
+- Ownership checks: Ensure users can access only their permitted resources.
 
-### T1 — Duplicate Payment (STRIDE: T)
+I treat every request coming from the client as untrusted.
 
-**Description:** An attacker (or network fault) replays a POST /transfers request, causing the same funds to be moved twice.
+## 3. Threats I identified
 
-**Impact:** Financial loss for the sender; books no longer balance.
+### T1 — Duplicate payments
 
-**Controls:**
-- `Idempotency-Key` header required on transfers. Stored in `idempotency_keys` table keyed on (key, user_id, path).
-- Duplicate key detection happens inside a SERIALIZABLE transaction — no window for a race condition.
-- Database UNIQUE constraint on `transactions.idempotency_key` as a last-resort backstop.
+**STRIDE category:** Tampering
 
-**Tests:** `tests/transfers.test.ts` — "idempotency — identical key does not double-spend", "rejects same key reused for different accounts".
+**What could happen?**
 
-**Residual risk:** Client may fail to include the key. Mitigation: document it as required; consider rejecting requests without a key on sensitive endpoints.
+A user may submit the same transfer request multiple times because of repeated clicks, network retries or malicious requests. This could result in money being transferred more than once.
 
----
+**How I addressed it:**
 
-### T2 — Unauthorised Transfer (STRIDE: E/S)
+- Implemented an Idempotency-Key mechanism for transfers.
+- Scoped idempotency records using the key, authenticated user and request path.
+- Added database uniqueness protection.
+- Checked whether a key is being reused for a different transfer.
 
-**Description:** User B sends a POST /transfers using User A's `from_account_id` to drain A's account.
+**Testing:** `tests/transfers.test.ts`
 
-**Impact:** Theft of funds.
+I test duplicate requests and reuse of the same key with different account details.
 
-**Controls:**
-- `requireAuth` middleware validates JWT on every protected route.
-- `ledgerService.transferFunds` explicitly checks `fromAccount.user_id === initiatedBy` inside the SERIALIZABLE transaction, after row-level locking.
-- Returns 403 Forbidden — does not leak whether the account exists.
+**Remaining consideration:** I need to ensure missing idempotency keys are handled consistently on every sensitive transaction endpoint.
 
-**Tests:** `tests/transfers.test.ts` — "REQ9: forbids transfer from account user does not own".
+### T2 — Unauthorized transfers
 
-**Residual risk:** JWT secret compromise. Mitigation: rotate JWT secret; short expiry (24h).
+**STRIDE category:** Elevation of privilege / Spoofing
 
----
+**What could happen?**
 
-### T3 — Audit Log Tampering (STRIDE: T/R)
+A logged-in user could attempt to transfer money from an account belonging to another user by changing the source account ID.
 
-**Description:** An attacker with DB access modifies or deletes audit_log rows to cover their tracks.
+**How I addressed it:**
 
-**Impact:** Loss of non-repudiation; legal/compliance failure.
+- Protected routes using JWT authentication.
+- Added account ownership validation.
+- Performed ownership checks inside the transfer transaction.
+- Used database row locking before processing the transfer.
 
-**Controls:**
-1. PostgreSQL trigger `trg_audit_no_update` raises an exception on any UPDATE or DELETE — enforced at the database layer regardless of application behaviour.
-2. HMAC-SHA256 hash chain: each row's `row_hash` covers (event_type, actor_id, resource_type, resource_id, payload, created_at, prev_hash). Modifying any field of any row breaks all subsequent hashes.
-3. `GET /audit/verify` endpoint lets anyone with a token check the full chain at any time.
+**Testing:** `tests/transfers.test.ts`
 
-**Tests:** `tests/audit.test.ts` — "blocks UPDATE on audit_log rows", "blocks DELETE on audit_log rows", "chain verification detects tampered row_hash".
+I test that a user cannot transfer funds from another user's account.
 
-**Residual risk:** Superuser (`postgres` role) can disable triggers. Mitigation: revoke superuser from the app role; use a separate audit DB user with INSERT-only privileges.
+**Remaining risk:** If JWT signing credentials are compromised, an attacker may be able to impersonate users. Secret protection and rotation are important.
 
----
+### T3 — Audit log tampering
 
-### T4 — Negative Balance Exploit (STRIDE: T)
+**STRIDE category:** Tampering / Repudiation
 
-**Description:** An attacker sends two large simultaneous transfers that individually check the balance as sufficient but together overdraw the account.
+**What could happen?**
 
-**Impact:** Account goes negative; books don't balance.
+Someone with database access could attempt to modify or delete audit records to hide a transaction or change its history.
 
-**Controls:**
-1. `ISOLATION LEVEL SERIALIZABLE` — PostgreSQL detects the read-write conflict and raises a serialization_failure (40001), which is returned as HTTP 409 for the client to retry.
-2. `CHECK (balance >= 0)` constraint on `accounts.balance` — a database-level backstop that prevents any UPDATE that would make balance negative from committing.
-3. Accounts are row-locked (`FOR UPDATE`) in a consistent order (lower UUID first) before any read, preventing deadlocks.
+**How I addressed it:**
 
-**Tests:** The CHECK constraint is exercised by every transfer test that expects a balance to remain non-negative.
+- Added database-level protection against updating and deleting audit records.
+- Implemented an HMAC-SHA256 hash-chain approach.
+- Linked each audit record to the previous record through `prev_hash`.
+- Added an audit verification endpoint.
 
-**Residual risk:** Serialization retries under extreme contention. Mitigation: client-side exponential back-off; per-account queue in a high-throughput future version.
+**Testing:** `tests/audit.test.ts`
 
----
+I test database mutation protection and audit-chain verification behavior.
 
-### T5 — Account Enumeration / IDOR (STRIDE: I/E)
+**Known issue:**
 
-**Description:** An attacker guesses or brute-forces account UUIDs to read balances or transaction history belonging to other users.
+During local verification, the endpoint returned:
 
-**Impact:** Information disclosure; potential targeted attacks.
+`valid: false, firstBadId: 7`
 
-**Controls:**
-- All account/transaction routes check `user_id` ownership before returning data.
-- UUIDs (v4) are cryptographically random — 122 bits of entropy makes enumeration infeasible.
-- 404 vs 403 responses are normalised: if a resource doesn't belong to the caller, return 403 (not 404) to avoid leaking existence.
+I have documented this as an unresolved issue. I will not consider the audit-chain integrity feature fully verified until I identify the cause, fix it without deleting historical records, and pass the verification tests.
 
-**Note:** Current implementation returns 403 when the account exists but isn't owned. A stricter hardening would return 404 consistently. Tracked as a known trade-off.
+### T4 — Negative balance and concurrent transfers
 
----
+**STRIDE category:** Tampering
 
-### T6 — Credential Stuffing / Brute Force (STRIDE: S)
+**What could happen?**
 
-**Description:** Automated tools try large numbers of email/password combinations against POST /auth/login.
+Two transfer requests could execute at nearly the same time. Both might read the same available balance and attempt to spend the same funds.
 
-**Impact:** Account takeover.
+**How I addressed it:**
 
-**Controls:**
-- `express-rate-limit` on all routes (100 req/15 min).
-- Stricter rate limit on `/auth` routes (20 req/15 min).
-- `bcrypt` with cost factor 12 makes each hash attempt ~300ms — renders large-scale brute force impractical.
-- Constant-time response for unknown email (dummy hash always compared) prevents user enumeration via timing.
+- Used SERIALIZABLE transaction isolation.
+- Used row-level locking with `FOR UPDATE`.
+- Locked accounts in a consistent order.
+- Added database-level balance constraints.
 
-**Tests:** `tests/auth.test.ts` — "returns 401 for unknown email (same error as wrong password)".
+**Testing:** `tests/transfers.test.ts`
 
----
+I have tested insufficient-funds rejection. Concurrent transfer behavior must also be verified with explicit simultaneous-request tests.
 
-### T7 — JWT Secret Exposure (STRIDE: S/E)
+### T5 — Account enumeration and IDOR
 
-**Description:** The `JWT_SECRET` or `AUDIT_HMAC_SECRET` is committed to source control or leaked via logs.
+**STRIDE category:** Information Disclosure / Elevation of privilege
 
-**Impact:** Attacker can forge tokens or silently tamper with audit rows.
+**What could happen?**
 
-**Controls:**
-- Both secrets loaded from environment variables; `.env` is in `.gitignore`.
-- `.env.example` contains placeholder values, not real secrets.
-- Application throws at startup if either required env var is missing.
+A user could change an account UUID or transaction ID in an API request to access another user's financial information.
 
-**Residual risk:** Env vars logged by deployment platform. Mitigation: use secret management (e.g., Render secret groups).
+**How I addressed it:**
 
----
+- Added ownership checks to protected account and transaction operations.
+- Used UUIDs for resource identifiers.
+- Avoided relying on unpredictable IDs as a replacement for authorization.
 
-### T8 — Mass Assignment / Over-Posting (STRIDE: T)
+**Testing:** I need to ensure cross-user access is explicitly tested for account details, balances and transaction history, not just transfers.
 
-**Description:** Client sends extra fields (e.g., `balance`, `user_id`) in request body to manipulate server-side data.
+### T6 — Login brute force and credential stuffing
 
-**Impact:** Unauthorised data modification.
+**STRIDE category:** Spoofing
 
-**Controls:**
-- Zod schemas on every mutation endpoint declare the exact allowed shape; any extra field is stripped or rejected.
-- Balance is never accepted from the client for transfers — it is always computed by the server from the current DB state.
+**What could happen?**
 
----
+An attacker could repeatedly submit passwords or use leaked credentials to gain access to user accounts.
 
-### T9 — Denial of Service via Large Payloads (STRIDE: D)
+**How I addressed it:**
 
-**Description:** Attacker sends very large JSON bodies to exhaust memory or slow the server.
+- Used bcrypt password hashing.
+- Configured rate limiting for general API routes and authentication routes.
+- Used consistent authentication error responses for unknown users and incorrect passwords.
 
-**Impact:** Service unavailability.
+**Testing:** `tests/auth.test.ts`
 
-**Controls:**
-- `express.json({ limit: '10kb' })` — requests exceeding 10 KB are rejected with 413.
-- Rate limiting further throttles abusive clients.
+I test that an unknown email and an incorrect password return the same authentication error.
 
----
+**Remaining consideration:** Account lockout, MFA and monitoring can provide additional protection.
 
-### T10 — SQL Injection (STRIDE: T/I)
+### T7 — Secret exposure
 
-**Description:** Attacker embeds SQL in request parameters to read or modify arbitrary data.
+**STRIDE category:** Spoofing / Elevation of privilege
 
-**Impact:** Full database compromise.
+**What could happen?**
 
-**Controls:**
-- All queries use parameterised statements (`$1`, `$2`, …) via the `pg` library — no string concatenation of user input into SQL.
-- Zod input validation rejects malformed input before it reaches the database layer.
+If JWT or audit HMAC secrets are exposed, attackers may forge authentication tokens or compromise audit verification.
 
----
+**How I addressed it:**
 
-## Known Limitations / Future Hardening
+- Kept `.env` out of Git.
+- Added `.env.example` with placeholder values.
+- Used environment variables for sensitive configuration.
+- Added startup checks for required secrets.
 
-| Item | Risk | Mitigation Plan |
-|---|---|---|
-| Single DB role | Admin role = app role | Separate read/write/audit roles |
-| No refresh tokens | Token theft = 24h window | Add short-lived access + refresh token rotation |
-| In-memory rate limiter | Doesn't persist across restarts | Redis-backed rate limiter |
-| No MFA | Credential theft sufficient for takeover | TOTP second factor |
-| Audit DB user | App can INSERT into audit_log | Separate audit-writer role with INSERT-only |
+I also checked the files before pushing the project to GitHub to avoid committing my local `.env` file.
+
+**Remaining consideration:** Production secrets must remain in Render environment settings and should be rotated if exposure is suspected.
+
+### T8 — Mass assignment and over-posting
+
+**STRIDE category:** Tampering
+
+**What could happen?**
+
+A user could send extra fields such as `balance`, `user_id` or administrative properties in a request body to manipulate server-side data.
+
+**How I addressed it:**
+
+- Used Zod validation schemas.
+- Defined accepted request fields.
+- Calculated financial values on the server instead of trusting client-provided balances.
+
+**Remaining consideration:** I need explicit negative tests for unexpected fields on every mutation endpoint.
+
+### T9 — Denial of service through large requests
+
+**STRIDE category:** Denial of Service
+
+**What could happen?**
+
+An attacker could send very large request bodies or repeatedly call endpoints to consume server resources.
+
+**How I addressed it:**
+
+- Restricted JSON request body size.
+- Added rate limiting.
+- Validated incoming request data.
+
+**Remaining consideration:** I can strengthen this further with distributed rate limiting, request timeouts and monitoring.
+
+### T10 — SQL injection
+
+**STRIDE category:** Tampering / Information Disclosure
+
+**What could happen?**
+
+An attacker could insert SQL commands into input fields to access or modify database information.
+
+**How I addressed it:**
+
+- Used parameterized PostgreSQL queries.
+- Avoided directly concatenating user input into SQL statements.
+- Validated request inputs before database operations.
+
+**Remaining consideration:** I will continue reviewing database queries whenever new endpoints are introduced.
+
+## 4. Known limitations and future improvements
+
+I understand that having security controls in code does not automatically prove that every attack is prevented.
+
+These are the areas I still want to improve:
+## 4. Known limitations and future improvements
+
+While developing LedgerLine, I identified a few areas that still need improvement. I have documented them instead of claiming that every security feature is fully verified.
+
+### 1. Audit Chain Integrity
+- **Current status:** Audit verification returned `valid: false`, `firstBadId: 7`.
+- **Problem:** The audit hash-chain verification is not passing.
+- **My next step:** Investigate JSON/JSONB canonicalization, HMAC consistency and historical record verification.
+- **Priority:** Critical.
+
+### 2. Database Permissions
+- **Current status:** Application and audit database permissions need further separation.
+- **Problem:** Database access should follow the principle of least privilege.
+- **My next step:** Introduce separate database roles with restricted permissions.
+- **Priority:** High.
+
+### 3. Rate Limiting
+- **Current status:** Current rate limiting is not distributed across multiple application instances.
+- **Problem:** In-memory rate limits may not provide consistent protection across instances.
+- **My next step:** Evaluate Redis-backed rate limiting.
+- **Priority:** Medium.
+
+### 4. Authentication
+- **Current status:** Multi-factor authentication is not implemented.
+- **Problem:** Password-based authentication alone has limitations.
+- **My next step:** Consider implementing TOTP-based MFA.
+- **Priority:** Medium.
+
+### 5. JWT Security
+- **Current status:** Token expiry and rotation require further hardening.
+- **Problem:** Compromised or long-lived tokens can increase security risks.
+- **My next step:** Evaluate refresh-token rotation and improved token lifecycle management.
+- **Priority:** High.
+
+### 6. Authorization Testing
+- **Current status:** More cross-user access tests are required.
+- **Problem:** Every resource endpoint must prevent unauthorized access.
+- **My next step:** Add negative tests for account details, balances and transaction history.
+- **Priority:** Critical.
+
+### 7. Concurrent Transfers
+- **Current status:** More simultaneous-transfer tests are needed.
+- **Problem:** Concurrent requests must never result in incorrect balances or duplicate transactions.
+- **My next step:** Add concurrency stress tests and verify transaction isolation behavior.
+- **Priority:** Critical.
+
+## 5. My approach to security
+
+I did not treat security as a final step after building the UI. I considered it while designing authentication, account ownership, transfer processing and audit logging.
+
+I also used automated tests to check important failure scenarios instead of testing only successful requests.
+
+My next priority is to resolve the audit integrity verification issue and strengthen negative security tests before treating LedgerLine as production-ready.
+## 5. My approach to security
+
+I did not treat security as a final step after building the UI. I considered it while designing the authentication, account ownership, transfer and audit flows.
+
+I also used automated tests to check important failure scenarios, rather than testing only successful requests.
+
+My next priority is to resolve the audit integrity verification issue and strengthen the negative security tests before treating LedgerLine as production-ready.
