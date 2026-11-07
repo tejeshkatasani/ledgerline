@@ -102,7 +102,7 @@ describe('Audit log', () => {
     ).rejects.toThrow();
   });
 
-  it('returns only caller's events from GET /audit', async () => {
+  it('returns only the callers events from GET /audit', async () => {
     const resA = await request(app).post('/auth/register').send({
       email: 'personA@example.com',
       password: 'PersonAPass',

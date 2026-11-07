@@ -22,7 +22,6 @@ const transferSchema = z.object({
 router.post(
   '/',
   requireAuth,
-  idempotency,
   validate(transferSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {

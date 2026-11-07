@@ -147,7 +147,8 @@ describe('Transfers — core requirements', () => {
         amount: '100.00',
         currency: 'USD',
       });
-    expect(second.status).toBe(200); // replayed
+    // Service-level idempotency: same key returns 200 with replayed=true
+    expect(second.status).toBe(200);
     expect(second.body.data.replayed).toBe(true);
 
     // Balance should only reflect ONE transfer

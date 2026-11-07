@@ -27,7 +27,7 @@ describe('Accounts', () => {
     expect(res.body.data.name).toBe('Savings');
   });
 
-  it('lists only the caller's accounts', async () => {
+  it('lists only the callers accounts', async () => {
     const tokenA = await createUserAndToken('a@example.com');
     const tokenB = await createUserAndToken('b@example.com');
 
@@ -47,7 +47,7 @@ describe('Accounts', () => {
     expect(res.body.data[0].name).toBe('A account');
   });
 
-  it('forbids accessing another user's account', async () => {
+  it('forbids accessing another users account', async () => {
     const tokenA = await createUserAndToken('a2@example.com');
     const tokenB = await createUserAndToken('b2@example.com');
 

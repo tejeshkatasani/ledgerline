@@ -6,7 +6,6 @@ module.exports = {
   testMatch: ['**/tests/**/*.test.ts'],
   collectCoverageFrom: ['src/**/*.ts', '!src/index.ts', '!src/db/migrate.ts'],
   coverageReporters: ['text', 'lcov'],
-  setupFilesAfterFramework: [],
   testTimeout: 30000,
   globals: {
     'ts-jest': {

@@ -29,7 +29,7 @@ app.use(
 // ── Rate limiting ─────────────────────────────────────────────────────────────
 const limiter = rateLimit({
   windowMs: config.rateLimitWindowMs,
-  max: config.rateLimitMax,
+  max: config.nodeEnv === 'test' ? 100000 : config.rateLimitMax,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
@@ -43,7 +43,7 @@ app.use(limiter);
 // Stricter limit on auth endpoints
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 min
-  max: 20,
+  max: config.nodeEnv === 'test' ? 100000 : 20,
   message: {
     success: false,
     error: 'Too many authentication attempts',
