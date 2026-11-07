@@ -1,4 +1,5 @@
 import express from 'express';
+import path from 'path';
 import helmet from 'helmet';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
@@ -54,9 +55,35 @@ const authLimiter = rateLimit({
 // ── Body parsing ──────────────────────────────────────────────────────────────
 app.use(express.json({ limit: '10kb' }));
 
+// Serve the LedgerLine browser application from the same origin as the API.
+// In production, compiled app.js lives in dist/, so ../public resolves to the project root.
+app.use(express.static(path.join(__dirname, '../public')));
+
 // ── Health check (no auth) ────────────────────────────────────────────────────
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', service: 'ledgerline', version: '1.0.0' });
+});
+
+// ── Root landing ──────────────────────────────────────────────────────────────
+app.get('/', (_req, res) => {
+  res.json({
+    service: 'LedgerLine',
+    description: 'Secure double-entry ledger API — money movement you can prove',
+    version: '1.0.0',
+    status: 'running',
+    github: 'https://github.com/tejeshkatasani/ledgerline',
+    endpoints: {
+      health:       'GET  /health',
+      register:     'POST /auth/register',
+      login:        'POST /auth/login',
+      accounts:     'GET  /accounts',
+      createAcct:   'POST /accounts',
+      transfer:     'POST /transfers',
+      transactions: 'GET  /transactions',
+      audit:        'GET  /audit',
+      auditVerify:  'GET  /audit/verify',
+    },
+  });
 });
 
 // ── Routes ────────────────────────────────────────────────────────────────────

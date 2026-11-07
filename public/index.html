@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101827">
+  <meta name="description" content="LedgerLine — secure double-entry ledger and money movement dashboard.">
+  <title>LedgerLine — Financial workspace</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <div id="toast-region" class="toast-region" aria-live="polite"></div>
+  <main id="auth-screen" class="auth-screen">
+    <section class="auth-visual">
+      <a class="brand brand-light" href="/"><span class="brand-mark">L</span><span>Ledger<span class="brand-accent">Line</span></span></a>
+      <div class="visual-copy">
+        <div class="eyebrow"><span class="pulse-dot"></span> TRUSTED FINANCIAL OPERATIONS</div>
+        <h1>Every transaction.<br><span>Accounted for.</span></h1>
+        <p>A clear view of your accounts, transfers and audit trail — built on a ledger you can prove.</p>
+        <div class="visual-stats">
+          <div><strong>01</strong><span>Double-entry ledger</span></div>
+          <div><strong>02</strong><span>Atomic transfers</span></div>
+          <div><strong>03</strong><span>Verifiable audit trail</span></div>
+        </div>
+      </div>
+      <div class="visual-foot">SECURE BY DESIGN <span>•</span> LEDGERLINE 1.0</div>
+    </section>
+    <section class="auth-panel">
+      <div class="auth-card">
+        <div class="mobile-brand brand"><span class="brand-mark">L</span><span>Ledger<span class="brand-accent">Line</span></span></div>
+        <div class="auth-heading">
+          <div class="eyebrow muted">YOUR FINANCIAL WORKSPACE</div>
+          <h2 id="auth-title">Welcome back</h2>
+          <p id="auth-subtitle">Sign in to continue to your dashboard.</p>
+        </div>
+        <div class="auth-tabs">
+          <button class="auth-tab active" data-auth-mode="login" type="button">Sign in</button>
+          <button class="auth-tab" data-auth-mode="register" type="button">Create account</button>
+        </div>
+        <form id="auth-form" class="form-stack">
+          <label>Email address<input id="auth-email" type="email" autocomplete="email" placeholder="you@example.com" required></label>
+          <label>Password<input id="auth-password" type="password" autocomplete="current-password" placeholder="At least 8 characters" minlength="8" required></label>
+          <button class="btn btn-primary btn-full" id="auth-submit" type="submit">Sign in <span>→</span></button>
+        </form>
+        <p class="auth-note"><span class="lock-icon">▣</span> Your session is protected with token-based authentication.</p>
+      </div>
+      <div class="auth-copyright">© 2026 LedgerLine. Secure money movement, made clear.</div>
+    </section>
+  </main>
+
+  <div id="app-shell" class="app-shell hidden">
+    <aside class="sidebar" id="sidebar">
+      <a class="brand sidebar-brand" href="#" data-view="dashboard"><span class="brand-mark">L</span><span>Ledger<span class="brand-accent">Line</span></span></a>
+      <div class="workspace-label">WORKSPACE</div>
+      <nav class="nav-list" aria-label="Main navigation">
+        <button class="nav-link active" data-view="dashboard"><span class="nav-icon">▦</span>Overview</button>
+        <button class="nav-link" data-view="accounts"><span class="nav-icon">▤</span>Accounts</button>
+        <button class="nav-link" data-view="transfers"><span class="nav-icon">⇄</span>Transfers</button>
+        <button class="nav-link" data-view="transactions"><span class="nav-icon">◷</span>Transactions</button>
+        <button class="nav-link" data-view="audit"><span class="nav-icon">⌁</span>Audit trail</button>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="security-card"><span class="security-icon">✓</span><div><strong>Ledger protected</strong><small>Double-entry controls active</small></div></div>
+        <button class="profile-button" id="logout-button"><span class="avatar" id="user-avatar">U</span><span class="profile-copy"><strong id="user-email">User</strong><small>Sign out</small></span><span class="logout-symbol">↗</span></button>
+      </div>
+    </aside>
+    <div class="main-area">
+      <header class="topbar">
+        <button id="menu-toggle" class="icon-button mobile-only" aria-label="Toggle menu">☰</button>
+        <div class="breadcrumb">Workspace <span>/</span> <strong id="breadcrumb-current">Overview</strong></div>
+        <div class="topbar-right"><span class="status-pill"><i></i> API connected</span><span class="top-date" id="today-date"></span></div>
+      </header>
+      <main class="content">
+        <section id="view-dashboard" class="view active">
+          <div class="page-heading"><div><div class="eyebrow muted">FINANCIAL OVERVIEW</div><h1>Good to see you<span class="heading-period">.</span></h1><p>Here's what's happening across your accounts.</p></div><button class="btn btn-primary" data-view="transfers"> <span>＋</span> New transfer</button></div>
+          <div class="metric-grid">
+            <article class="metric-card metric-main"><div class="metric-label">TOTAL BALANCE <span class="metric-symbol">↗</span></div><div class="metric-value" id="total-balance">—</div><div class="metric-foot"><span class="metric-dot"></span> Across active accounts</div></article>
+            <article class="metric-card"><div class="metric-label">ACTIVE ACCOUNTS <span class="metric-symbol">▤</span></div><div class="metric-value" id="total-accounts">0</div><div class="metric-foot">Your connected accounts</div></article>
+            <article class="metric-card"><div class="metric-label">TRANSACTIONS <span class="metric-symbol">◷</span></div><div class="metric-value" id="total-transactions">0</div><div class="metric-foot">Recent ledger activity</div></article>
+          </div>
+          <div class="section-grid">
+            <article class="panel"><div class="panel-heading"><div><h3>Your accounts</h3><p>Balances at a glance</p></div><button class="text-button" data-view="accounts">View all →</button></div><div id="dashboard-accounts" class="account-list"><div class="empty-state">Loading accounts…</div></div></article>
+            <article class="panel"><div class="panel-heading"><div><h3>Recent activity</h3><p>Latest money movements</p></div><button class="text-button" data-view="transactions">View all →</button></div><div id="dashboard-transactions" class="activity-list"><div class="empty-state">Loading activity…</div></div></article>
+          </div>
+          <div class="integrity-strip"><span class="integrity-check">✓</span><div><strong>Built around financial integrity</strong><p>Transfers are atomic, balances are protected and every movement is recorded in an append-only audit log.</p></div><button class="text-button" data-view="audit">View audit trail →</button></div>
+        </section>
+
+        <section id="view-accounts" class="view">
+          <div class="page-heading"><div><div class="eyebrow muted">YOUR MONEY, ORGANIZED</div><h1>Accounts<span class="heading-period">.</span></h1><p>Manage the accounts connected to your ledger.</p></div><button class="btn btn-primary" id="show-account-form"><span>＋</span> Add account</button></div>
+          <div id="account-form-wrap" class="panel form-panel hidden"><div class="panel-heading"><div><h3>Create an account</h3><p>Add a new account to your workspace.</p></div><button class="icon-button" id="hide-account-form" aria-label="Close">×</button></div><form id="account-form" class="inline-form"><label>Account name<input id="account-name" required maxlength="100" placeholder="e.g. Everyday checking"></label><label>Currency<select id="account-currency"><option>USD</option><option>INR</option><option>EUR</option><option>GBP</option></select></label><label>Opening balance<input id="account-balance" type="number" min="0" step="0.01" value="0" required></label><button class="btn btn-primary" type="submit">Create account</button></form></div>
+          <div class="panel"><div class="panel-heading"><div><h3>All accounts</h3><p id="accounts-caption">Account balances and status</p></div><span class="count-chip" id="account-count">0 accounts</span></div><div id="accounts-list" class="accounts-grid"><div class="empty-state">Loading accounts…</div></div></div>
+        </section>
+
+        <section id="view-transfers" class="view">
+          <div class="page-heading"><div><div class="eyebrow muted">MOVE MONEY SECURELY</div><h1>New transfer<span class="heading-period">.</span></h1><p>Move funds between accounts with a traceable ledger entry.</p></div></div>
+          <div class="transfer-layout"><article class="panel transfer-panel"><div class="panel-heading"><div><h3>Transfer details</h3><p>Complete the fields below to initiate a transfer.</p></div><span class="secure-chip">▣ SECURE</span></div><form id="transfer-form" class="form-stack transfer-form">
+            <label>From account<select id="transfer-from" required><option value="">Choose source account</option></select></label>
+            <div class="swap-mark">↓</div>
+            <label>Destination account ID<input id="transfer-to" required placeholder="Paste recipient account UUID"></label>
+            <div class="field-row"><label>Amount<input id="transfer-amount" type="number" min="0.01" step="0.01" required placeholder="0.00"></label><label>Currency<select id="transfer-currency"><option>USD</option><option>INR</option><option>EUR</option><option>GBP</option></select></label></div>
+            <label>Description <span class="optional">(optional)</span><input id="transfer-description" maxlength="255" placeholder="What's this transfer for?"></label>
+            <div class="transfer-note"><span>ⓘ</span> Transfers are processed atomically. Make sure the destination account ID is correct.</div>
+            <button class="btn btn-primary btn-full" type="submit">Review and transfer <span>→</span></button>
+          </form></article><aside class="panel transfer-aside"><div class="aside-icon">⇄</div><h3>Designed for trust.</h3><p>Every transfer creates matching debit and credit entries. Duplicate requests are protected with idempotency keys.</p><div class="aside-rule"></div><div class="aside-point"><span>01</span><div><strong>Atomic processing</strong><small>All-or-nothing database transaction</small></div></div><div class="aside-point"><span>02</span><div><strong>Balance protection</strong><small>No overdrafts or partial transfers</small></div></div><div class="aside-point"><span>03</span><div><strong>Audit visibility</strong><small>Every event is recorded</small></div></div></aside></div>
+        </section>
+
+        <section id="view-transactions" class="view">
+          <div class="page-heading"><div><div class="eyebrow muted">COMPLETE MONEY MOVEMENT HISTORY</div><h1>Transactions<span class="heading-period">.</span></h1><p>Review transfers and their current status.</p></div><button class="btn btn-outline" id="refresh-transactions">↻ Refresh</button></div>
+          <div class="panel"><div class="panel-heading"><div><h3>Transaction history</h3><p>Latest 100 records involving your accounts.</p></div><span class="count-chip" id="transaction-count">0 records</span></div><div class="table-wrap"><table><thead><tr><th>TRANSACTION</th><th>DESCRIPTION</th><th>AMOUNT</th><th>STATUS</th><th>DATE</th></tr></thead><tbody id="transactions-body"><tr><td colspan="5" class="empty-state">Loading transactions…</td></tr></tbody></table></div></div>
+        </section>
+
+        <section id="view-audit" class="view">
+          <div class="page-heading"><div><div class="eyebrow muted">TRANSPARENCY & VERIFICATION</div><h1>Audit trail<span class="heading-period">.</span></h1><p>A chronological record of events associated with your account.</p></div><button class="btn btn-outline" id="verify-audit">✓ Verify integrity</button></div>
+          <div id="audit-verification" class="verification-result hidden"></div>
+          <div class="panel"><div class="panel-heading"><div><h3>Recent events</h3><p>Append-only activity log</p></div><span class="count-chip" id="audit-count">0 events</span></div><div id="audit-list" class="audit-list"><div class="empty-state">Loading audit events…</div></div></div>
+        </section>
+      </main>
+      <footer class="footer"><span>© 2026 LedgerLine</span><span>Double-entry by design <b>•</b> Built for trust</span></footer>
+    </div>
+  </div>
+
+  <dialog id="confirm-dialog" class="confirm-dialog"><form method="dialog"><button class="dialog-close" aria-label="Close">×</button><div class="dialog-icon">⇄</div><h2>Confirm transfer</h2><p id="confirm-copy">Review the transfer details before continuing.</p><div class="dialog-actions"><button class="btn btn-outline" value="cancel">Cancel</button><button class="btn btn-primary" id="confirm-transfer" value="confirm">Confirm transfer</button></div></form></dialog>
+</body>
+</html>

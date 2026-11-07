@@ -2,6 +2,8 @@
 
 Money movement with a ledger you can prove.
 
+LedgerLine includes a browser dashboard served by the Express application and a JSON API behind the same origin.
+
 **Live URL:** https://ledgerline-mbwz.onrender.com  
 **GitHub:** https://github.com/tejeshkatasani/ledgerline
 
@@ -9,7 +11,7 @@ Money movement with a ledger you can prove.
 
 ## What it does
 
-LedgerLine is a REST API for moving money between accounts where every transaction is:
+LedgerLine is a financial workspace with a browser UI and REST API for moving money between accounts where every transaction is:
 
 - **Accurate** — double-entry bookkeeping; every debit has an equal credit
 - **Atomic** — SERIALIZABLE PostgreSQL transactions; partial transfers are impossible
@@ -18,6 +20,19 @@ LedgerLine is a REST API for moving money between accounts where every transacti
 - **Traceable** — an append-only, HMAC-chained audit log that detects tampering
 
 ---
+
+## Browser application
+
+Open the root URL (`/`) to use the LedgerLine dashboard. The UI includes:
+
+- Sign in and account registration
+- Overview of active accounts and recent transactions
+- Create and close accounts
+- Initiate transfers using a destination account UUID
+- Review transaction history
+- View audit events and verify the audit chain
+
+The browser app is served from `public/` by Express. It uses the same origin as the API, so no separate frontend deployment or CORS configuration is required.
 
 ## API Reference
 
@@ -110,27 +125,15 @@ npm test
 
 ## Deploy to Render
 
-The `render.yaml` in the root automates everything. Deploy in ~2 minutes:
+The `render.yaml` Blueprint creates the Node web service and PostgreSQL database.
 
-1. Go to [render.com](https://render.com) and sign up (free, no credit card)
-2. Click **New → Blueprint**
-3. Connect your GitHub account and select the `ledgerline` repo
-4. Render reads `render.yaml` and creates: one Web Service + one PostgreSQL database
-5. Click **Apply** — Render will:
-   - Run `npm ci && npm run build && node dist/db/migrate.js`
-   - Start with `npm start`
-   - Auto-inject `DATABASE_URL` from the managed Postgres
-   - Auto-generate `JWT_SECRET` and `AUDIT_HMAC_SECRET`
-6. Your live URL will be: `https://ledgerline.onrender.com`
+1. Connect the GitHub repository to Render as a Blueprint.
+2. Apply the Blueprint.
+3. Render builds the TypeScript API with `npm install && npm run build`.
+4. At runtime, `start.js` runs the database migrations and then starts the Express server.
+5. Render injects `DATABASE_URL` and generates the JWT and audit HMAC secrets.
 
-**Alternatively**, deploy manually:
-1. Create a new **PostgreSQL** database on Render (free tier)
-2. Create a new **Web Service**, connect the repo
-3. Set build command: `npm ci && npm run build && node dist/db/migrate.js`
-4. Set start command: `npm start`
-5. Add env vars: `DATABASE_URL` (from step 1), `JWT_SECRET` (random 64 chars), `AUDIT_HMAC_SECRET` (random 64 chars), `NODE_ENV=production`
-
----
+The web service serves the browser application from `public/` and the API from the same domain. The health check is `GET /health`.
 
 ## Architecture
 
@@ -195,3 +198,22 @@ Key properties:
 | 8 | Audit log is tamper-evident | DB trigger + hash chain |
 | 9 | Closed accounts cannot send | is_active check in ledgerService |
 | 10 | Currency mismatch rejected | currency check in ledgerService |
+## Known Issues & Pending Improvements
+
+### 1. Audit Chain Integrity Verification
+- **Status:** Pending investigation
+- **Issue:** Audit integrity verification currently returns `valid: false`.
+- **First detected:** Audit record ID 7.
+- **Impact:** Audit events are recorded, but complete hash-chain integrity verification is not yet passing.
+- **Next steps:**
+  - Inspect audit_log database schema.
+  - Investigate JSON/JSONB canonicalization.
+  - Verify HMAC-SHA256 consistency.
+  - Fix verification without deleting existing audit records.
+  - Run integrity verification and confirm all tests pass.
+
+### 2. Deployment Verification
+- Recheck all production API endpoints.
+- Verify database connectivity and migrations.
+- Test authentication and account ownership.
+- Perform end-to-end transfer testing.
